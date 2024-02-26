@@ -1,0 +1,151 @@
+---
+  - name: haproxy server configuration
+    hosts: localhost
+    become: true
+    tasks:
+      - name: setting up static hostname
+        hostname:
+             name: haproxy-server
+             use: systemd
+      - name: make entries in /etc/hosts
+        blockinfile:
+              dest: /etc/hosts
+              block: |
+                 192.168.1.99 haproxy-server
+                 192.168.1.90 node1
+                 192.168.1.92 node2
+              insertafter: EOF
+      - name: install haproxy
+        dnf:
+          name: haproxy
+          state: latest
+      - name: copying haproxy.cfg file
+        template:
+            src: haproxy.cfg.j2
+            dest: /etc/haproxy/haproxy.cfg
+            force: true
+      - name: making changes rsyslog
+        replace:
+            dest: /etc/rsyslog.conf
+            regexp: '^#module(load="imudp")'
+            replace: 'module(load="imudp")'
+      - name: making changes in rsyslog
+        replace:
+           dest: /etc/rsyslog.conf
+           regexp: '^#input(type="imudp" port="514")'
+           replace: 'input(type="imudp" port="514")'
+      - name: creating haproxy for rsyslog
+        copy:
+          dest: "/etc/rsyslog.d/haproxy.conf"
+          content: |
+                local2.=info /var/log/haproxy-access.log
+                local2.notice /var/log/haproxy-info.log
+      - name: restarting and enabling rsyslog
+        service:
+            name: rsyslog
+            state: restarted
+            enabled: yes
+      - name: turning on the haproxy
+        command: setsebool -P haproxy_connect_any 1
+      - name: allowing traffic in firewall
+        firewalld:
+             service: http
+             zone: public
+             permanent: true
+             immediate: true
+             state: enabled
+      - name: starting and enabling haproxy
+        service:
+           name: haproxy
+           state: started
+           enabled: yes
+
+
+  - hosts: database
+    become: true
+    tasks:
+     - name: setting up hostname
+       hostname:
+          name: node1
+          use: systemd
+     - name: making entries
+       blockinfile:
+            dest: /etc/hosts
+            block: |
+                192.168.1.99 haproxy-server
+                192.168.1.90 node1
+                192.168.1.92 node2
+            insertafter: EOF
+     - name: installing nginx package
+       dnf:
+        name: nginx
+        state: latest
+     - name: copying the image file to nginx
+       copy:
+        src: /root/Downloads/iant.png
+        dest: /usr/share/nginx/html/iant.png
+     - name: creating index.html
+       copy:
+        dest: "/usr/share/nginx/html/index.html"
+        content: |
+            <img src="/iant.png" width="500" height="500" />
+            <h1>iant jm road classes</h1>
+            <i>this page is hosted on node1 machine using nginx</i>
+     - name: allowing http traffic
+       firewalld:
+            service: http
+            zone: public
+            permanent: true
+            immediate: true
+            state: enabled
+     - name: starting nginx
+       service:
+          name: nginx
+          state: started
+          enabled: yes
+
+
+  - hosts: var
+    become: true
+    tasks:
+    - name: setting up hostname
+      hostname:
+          name: node2
+          use: systemd
+    - name: making entries
+      blockinfile:
+           dest: /etc/hosts
+           block: |
+              192.168.1.99 haproxy-server
+              192.168.1.90 node1
+              192.168.1.92 node2
+           insertafter: EOF
+    - name: install nginx
+      dnf:
+        name: nginx
+        state: latest
+    - name: copy image file
+      copy:
+       src: /root/Downloads/iant.png
+       dest: /usr/share/nginx/html/iant.png
+    - name: create index.html
+      copy:
+        dest: "/usr/share/nginx/html/index.html"
+        content: |
+             <img src="/iant.png" width="500" height="500"/>
+             <h1>iant jm road classes</h1>
+             <i>this page is hosted on node2 machine using nginx</i>
+    - name: allow http traffic
+      firewalld:
+         service: http
+         zone: public
+         permanent: true
+         immediate: true
+         state: enabled
+    - name: start nginx
+      service:
+          name: nginx
+          state: started
+          enabled: yes      
+
+                   
